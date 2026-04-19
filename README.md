@@ -6,7 +6,7 @@
   <p align="center">
     <strong>Unificador de Extratos OFX e Motor de Conciliação Automatizada</strong>
     <br />
-    Uma ferramenta de inteligência contábil para tratamento de dados, auditoria de fluxo de caixa e integração direta com sistemas de grande porte.
+    Uma ferramenta de inteligência contábil para tratamento de dados, auditoria de fluxo de caixa e integração direta com sistemas.
   </p>
 
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-000000?style=for-the-badge&logo=python&logoColor=C5A059"></a>
