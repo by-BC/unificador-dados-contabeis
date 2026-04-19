@@ -86,8 +86,27 @@ with col_up1:
 with col_up2:
     st.markdown("<p style='color:#C5A059; font-weight:bold; margin-bottom:0;'>2. A Verdade da Empresa</p>", unsafe_allow_html=True)
     arquivo_erp = st.file_uploader("Controle Interno (CSV ou Excel)", type=["csv", "xlsx"])
+    
+    valores_erp = [] # Lista que vai guardar os valores do cliente
     if arquivo_erp:
-        st.warning("⚠️ Módulo de Match em desenvolvimento. Por enquanto, focaremos na Inteligência do Extrato.")
+        try:
+            # Controle lógico para aceitar tanto CSV quanto Excel
+            if arquivo_erp.name.endswith('.csv'):
+                df_erp = pd.read_csv(arquivo_erp, sep=';', decimal=',')
+            else:
+                df_erp = pd.read_excel(arquivo_erp)
+            
+            # Busca a coluna de Valor (independente se está maiúscula ou minúscula)
+            coluna_valor = [col for col in df_erp.columns if 'VALOR' in str(col).upper()]
+            
+            if coluna_valor:
+                # Transforma todos os valores em absolutos para facilitar o match
+                valores_erp = df_erp[coluna_valor[0]].abs().tolist()
+                st.success(f"✅ ERP carregado! {len(valores_erp)} lançamentos prontos para auditoria.")
+            else:
+                st.error("A planilha precisa ter uma coluna chamada 'Valor'.")
+        except Exception as e:
+            st.error(f"Erro na leitura do arquivo: {e}")
 
 st.markdown("---")
 
@@ -155,6 +174,34 @@ if arquivos_ofx:
     
     df = pd.DataFrame(dados)
     
+    # --- MOTOR DE MATCH (CONTROLE LÓGICO DE CONCILIAÇÃO) ---
+    if valores_erp:
+        # Criamos uma cópia da fila do ERP para ir "dando baixa"
+        fila_erp = valores_erp.copy()
+        status_match = []
+        
+        # Percorre cada linha do Banco (OFX)
+        for valor_banco in df['Valor'].abs():
+            match_encontrado = False
+            
+            # Tenta encontrar o valor exato na fila do ERP
+            for valor_cliente in fila_erp:
+                # Usamos uma margem mínima (0.01) para evitar erros de arredondamento do Python
+                if abs(valor_banco - valor_cliente) < 0.01:
+                    status_match.append('✅ Conciliado')
+                    fila_erp.remove(valor_cliente) # Consome o valor para não dar match duplo
+                    match_encontrado = True
+                    break # Para de procurar e vai para a próxima linha do banco
+            
+            if not match_encontrado:
+                status_match.append('❌ Pendente no ERP')
+                
+        df['Status'] = status_match
+    else:
+        # Se não enviou o ERP, fica tudo aguardando
+        df['Status'] = '⚠️ Aguardando ERP'
+        
+
     # --- 1. LÓGICA DE CONCILIAÇÃO (Roda primeiro nos bastidores) ---
     df_cruzamento = df.copy()
     df_cruzamento['Valor_Abs'] = df_cruzamento['Valor'].abs()
