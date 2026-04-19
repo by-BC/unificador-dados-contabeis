@@ -251,13 +251,60 @@ if arquivos_ofx:
     if tem_transferencias:
         df_transferencias = pd.concat(lista_transferencias).drop(columns=['Valor_Abs'])
 
-    # --- 2. AÇÕES RÁPIDAS (Botões de Download no Topo) ---
-    st.write("### 📥 Ações Rápidas")
+    # --- 2. AÇÕES RÁPIDAS E EXPORTAÇÃO CONTÁBIL ---
+    st.write("### 📥 Ações Rápidas e Integração")
+    
+    # Seletor de Sistema Contábil com estilo premium
+    st.markdown("<p style='color:#C5A059; font-size:14px; margin-bottom:5px;'>Selecione o formato de saída dos dados:</p>", unsafe_allow_html=True)
+    sistema_escolhido = st.radio(
+        "Formato de Exportação", 
+        ["Padrão Analisegroup (CSV Gerencial)", "Domínio Sistemas (TXT Contábil)"], 
+        horizontal=True, 
+        label_visibility="collapsed"
+    )
+    
+    st.write("") # Espaçamento
+    
     col_btn1, col_btn2 = st.columns(2)
     
     with col_btn1:
-        csv_consolidado = df.to_csv(index=False, sep=';', decimal=',', encoding='utf-8-sig').encode('utf-8-sig')
-        st.download_button(label="📄 Baixar Planilha Consolidada", data=csv_consolidado, file_name="analisegroup_consolidado.csv", mime="text/csv", use_container_width=True)
+        if sistema_escolhido == "Domínio Sistemas (TXT Contábil)":
+            # --- MÁGICA DE TRADUÇÃO PARA DOMÍNIO ---
+            df_export = df.copy()
+            
+            # Simulando o Plano de Contas Padrão (De-Para)
+            # Banco = 100 | Despesa = 400 | Receita = 300
+            df_export['Conta_Debito'] = df_export.apply(lambda x: 100 if x['Tipo'] == 'CREDITO' else 400, axis=1)
+            df_export['Conta_Credito'] = df_export.apply(lambda x: 300 if x['Tipo'] == 'CREDITO' else 100, axis=1)
+            
+            # Formata a Data para o padrão exato do Domínio (DD/MM/YYYY)
+            df_export['Data_Formatada'] = pd.to_datetime(df_export['Data']).dt.strftime('%d/%m/%Y')
+            
+            # Cria a estrutura final exigida pelo layout do sistema
+            df_dominio = df_export[['Data_Formatada', 'Conta_Debito', 'Conta_Credito', 'Valor', 'Histórico']]
+            df_dominio.columns = ['Data', 'Conta_Debito', 'Conta_Credito', 'Valor', 'Historico']
+            
+            # Domínio geralmente aceita TXT separado por ponto e vírgula e codificação Windows (ANSI)
+            arquivo_final = df_dominio.to_csv(index=False, sep=';', decimal=',', encoding='windows-1252').encode('windows-1252')
+            nome_arq = "analisegroup_importacao_dominio.txt"
+            mime_tipo = "text/plain"
+            icone_botao = "⚙️ Baixar TXT para Domínio"
+            
+        else:
+            # --- PADRÃO GERENCIAL ANALISEGROUP ---
+            arquivo_final = df.to_csv(index=False, sep=';', decimal=',', encoding='utf-8-sig').encode('utf-8-sig')
+            nome_arq = "analisegroup_consolidado.csv"
+            mime_tipo = "text/csv"
+            icone_botao = "📄 Baixar Planilha Consolidada"
+
+        # O botão dinâmico
+        st.download_button(
+            label=icone_botao, 
+            data=arquivo_final, 
+            file_name=nome_arq, 
+            mime=mime_tipo, 
+            use_container_width=True
+        )
         
     with col_btn2:
         if tem_transferencias:
