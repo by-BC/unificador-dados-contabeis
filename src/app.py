@@ -74,7 +74,22 @@ with col_text:
     st.write("*Uma Contabilidade de Excelência*")
 
 st.markdown("---")
-arquivos = st.file_uploader("Selecione os arquivos OFX", type=["ofx"], accept_multiple_files=True)
+
+# --- ÁREAS DE UPLOAD (A DUPLA PONTA DA CONCILIAÇÃO) ---
+st.markdown("### 📥 Entrada de Dados (Preparação para o Match)")
+col_up1, col_up2 = st.columns(2)
+
+with col_up1:
+    st.markdown("<p style='color:#C5A059; font-weight:bold; margin-bottom:0;'>1. A Verdade do Banco</p>", unsafe_allow_html=True)
+    arquivos_ofx = st.file_uploader("Extratos OFX (Múltiplos)", type=["ofx"], accept_multiple_files=True)
+
+with col_up2:
+    st.markdown("<p style='color:#C5A059; font-weight:bold; margin-bottom:0;'>2. A Verdade da Empresa</p>", unsafe_allow_html=True)
+    arquivo_erp = st.file_uploader("Controle Interno (CSV ou Excel)", type=["csv", "xlsx"])
+    if arquivo_erp:
+        st.warning("⚠️ Módulo de Match em desenvolvimento. Por enquanto, focaremos na Inteligência do Extrato.")
+
+st.markdown("---")
 
 # --- MAPEAMENTO DE BANCOS (Atualizado) ---
 BANCOS_MAPEADOS = {
@@ -92,12 +107,36 @@ BANCOS_MAPEADOS = {
     '74': 'Banco Safra'
 }
 
-if arquivos:
+# --- INTELIGÊNCIA DE CATEGORIZAÇÃO (PLANO DE CONTAS BPO) ---
+REGRAS_CATEGORIZACAO = {
+    'TARIFA': 'Despesas Bancárias',
+    'MANUT': 'Despesas Bancárias',
+    'PIX': 'Transferências Pix',
+    'TED': 'Transferências',
+    'DOC': 'Transferências',
+    'PAGTO COBRANCA': 'Pagamento de Fornecedores',
+    'PAGTO TITULO': 'Pagamento de Fornecedores',
+    'DARF': 'Impostos',
+    'GPS': 'Impostos',
+    'SIMPLES NAC': 'Impostos',
+    'SALA': 'Folha de Pagamento',
+    'REND PAGO': 'Rendimentos de Aplicação',
+    'IOF': 'Impostos Financeiros',
+    'SAQUE': 'Saques em Espécie'
+}
+
+def categorizar_transacao(historico):
+    hist_upper = str(historico).upper()
+    for palavra_chave, categoria in REGRAS_CATEGORIZACAO.items():
+        if palavra_chave in hist_upper:
+            return categoria
+    return 'Não Categorizado (Pendente)'
+
+if arquivos_ofx:
     dados = []
-    for f in arquivos:
+    for f in arquivos_ofx:
         ofx = OfxParser.parse(f)
         
-        # Mapeamento de bancos
         codigo_raw = str(ofx.account.routing_number).strip()
         codigo_limpo = codigo_raw.lstrip('0')
         nome_banco = BANCOS_MAPEADOS.get(codigo_limpo, f"Banco {codigo_raw}")
@@ -108,7 +147,8 @@ if arquivos:
                 'Banco': nome_banco, 
                 'Data': t.date, 
                 'Valor': v, 
-                'Tipo': 'CREDITO' if v >= 0 else 'DEBITO', 
+                'Tipo': 'CREDITO' if v >= 0 else 'DEBITO',
+                'Categoria': categorizar_transacao(t.memo), # A MÁGICA ACONTECE AQUI
                 'CNPJ': extrair_cnpj(t.memo), 
                 'Histórico': t.memo
             })
