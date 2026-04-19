@@ -37,16 +37,19 @@ def check_password():
         return True
     
     st.title("🔐 Acesso Restrito - Analisegroup")
-    password = st.text_input("Insira a senha de acesso", type="password")
     
-    if st.button("Entrar"):
-        # IMPORTANTE: st.secrets["general"]["access_password"] substitui a senha fixa
-        # Você definirá o valor real desta senha no painel do Streamlit Cloud
-        if password == st.secrets["general"]["access_password"]:
-            st.session_state["password_correct"] = True
-            st.rerun()
-        else:
-            st.error("Senha incorreta.")
+    # Criar um formulário faz com que o "Enter" funcione como o botão de envio
+    with st.form("login_form", clear_on_submit=False):
+        password = st.text_input("Insira a senha de acesso", type="password")
+        submit_button = st.form_submit_button("Entrar", use_container_width=True)
+        
+        if submit_button:
+            if password == st.secrets["general"]["access_password"]:
+                st.session_state["password_correct"] = True
+                st.rerun() # Reinicia para liberar o app
+            else:
+                st.error("Senha incorreta. Tente novamente.")
+                
     return False
 
 if not check_password():
@@ -73,14 +76,36 @@ with col_text:
 st.markdown("---")
 arquivos = st.file_uploader("Selecione os arquivos OFX", type=["ofx"], accept_multiple_files=True)
 
+# --- MAPEAMENTO DE BANCOS (Atualizado) ---
+BANCOS_MAPEADOS = {
+    '1': 'Banco do Brasil',
+    '33': 'Santander',
+    '104': 'Caixa Econômica',
+    '237': 'Bradesco',
+    '341': 'Itaú',
+    '77': 'Inter',
+    '260': 'Nubank',
+    '634': 'Tribanco', # Banco Triângulo
+    '382': 'Tribanco', # Outro código comum do Tribanco
+    '41': 'Banrisul',
+    '422': 'Banco Safra',
+    '74': 'Banco Safra'
+}
+
 if arquivos:
     dados = []
     for f in arquivos:
         ofx = OfxParser.parse(f)
+        
+        # Mapeamento de bancos
+        codigo_raw = str(ofx.account.routing_number).strip()
+        codigo_limpo = codigo_raw.lstrip('0')
+        nome_banco = BANCOS_MAPEADOS.get(codigo_limpo, f"Banco {codigo_raw}")
+        
         for t in ofx.account.statement.transactions:
             v = float(t.amount)
             dados.append({
-                'Banco': ofx.account.routing_number, 
+                'Banco': nome_banco, 
                 'Data': t.date, 
                 'Valor': v, 
                 'Tipo': 'CREDITO' if v >= 0 else 'DEBITO', 
@@ -90,38 +115,106 @@ if arquivos:
     
     df = pd.DataFrame(dados)
     
-    st.write("### 📊 Auditoria de Fluxo")
+    # --- 1. LÓGICA DE CONCILIAÇÃO (Roda primeiro nos bastidores) ---
+    df_cruzamento = df.copy()
+    df_cruzamento['Valor_Abs'] = df_cruzamento['Valor'].abs()
+    grupos = df_cruzamento.groupby(['Data', 'Valor_Abs'])
+    
+    lista_transferencias = []
+    for nome, grupo in grupos:
+        if len(grupo) >= 2:
+            if 'CREDITO' in grupo['Tipo'].values and 'DEBITO' in grupo['Tipo'].values:
+                lista_transferencias.append(grupo)
+                
+    tem_transferencias = len(lista_transferencias) > 0
+    if tem_transferencias:
+        df_transferencias = pd.concat(lista_transferencias).drop(columns=['Valor_Abs'])
+
+    # --- 2. AÇÕES RÁPIDAS (Botões de Download no Topo) ---
+    st.write("### 📥 Ações Rápidas")
+    col_btn1, col_btn2 = st.columns(2)
+    
+    with col_btn1:
+        # Download 1: Consolidado Geral
+        csv_consolidado = df.to_csv(index=False, sep=';', decimal=',', encoding='utf-8-sig').encode('utf-8-sig')
+        st.download_button(
+            label="📄 Baixar Planilha Consolidada", 
+            data=csv_consolidado, 
+            file_name="analisegroup_consolidado.csv", 
+            mime="text/csv",
+            use_container_width=True # Estica o botão para preencher o espaço
+        )
+        
+    with col_btn2:
+        # Download 2: Apenas as Transferências (se existirem)
+        if tem_transferencias:
+            csv_transf = df_transferencias.to_csv(index=False, sep=';', decimal=',', encoding='utf-8-sig').encode('utf-8-sig')
+            st.download_button(
+                label="🔄 Baixar Relatório de Transferências", 
+                data=csv_transf, 
+                file_name="analisegroup_transferencias.csv", 
+                mime="text/csv",
+                use_container_width=True
+            )
+        else:
+            # Botão inativo caso o sistema não ache nada suspeito
+            st.button("✅ Sem transferências internas", disabled=True, use_container_width=True)
+
+    st.markdown("---")
+
+    # --- 3. BLOCO DE KPIs (Resumo Executivo) ---
+    total_credito = df[df['Tipo'] == 'CREDITO']['Valor'].sum()
+    total_debito = abs(df[df['Tipo'] == 'DEBITO']['Valor'].sum())
+    saldo_liquido = total_credito - total_debito
+    cor_saldo = "#C5A059" if saldo_liquido >= 0 else "#FF4B4B"
+
+    st.write("### 💎 Resumo Executivo")
+    kpi1, kpi2, kpi3 = st.columns(3)
+    
+    with kpi1:
+        st.markdown(f"<div style='border: 1px solid #C5A059; padding: 20px; border-radius: 10px; text-align: center;'> <p style='margin:0; color:#F0F0F0; text-transform:uppercase; font-size:12px; letter-spacing:2px;'>Total Créditos</p> <h2 style='margin:0; color:#C5A059;'>R$ {total_credito:,.2f}</h2> </div>", unsafe_allow_html=True)
+    with kpi2:
+        st.markdown(f"<div style='border: 1px solid #5C4A26; padding: 20px; border-radius: 10px; text-align: center;'> <p style='margin:0; color:#F0F0F0; text-transform:uppercase; font-size:12px; letter-spacing:2px;'>Total Débitos</p> <h2 style='margin:0; color:#F0F0F0;'>R$ {total_debito:,.2f}</h2> </div>", unsafe_allow_html=True)
+    with kpi3:
+        st.markdown(f"<div style='background-color: rgba(197, 160, 89, 0.1); border: 2px solid {cor_saldo}; padding: 20px; border-radius: 10px; text-align: center;'> <p style='margin:0; color:#F0F0F0; text-transform:uppercase; font-size:12px; letter-spacing:2px;'>Saldo Líquido</p> <h2 style='margin:0; color:{cor_saldo};'>R$ {saldo_liquido:,.2f}</h2> </div>", unsafe_allow_html=True)
+
+    st.write("---")
+
+    # --- 4. ANÁLISE DETALHADA POR INSTITUIÇÃO ---
+    st.write("### 🏦 Detalhamento por Banco")
     c1, c2 = st.columns(2)
+
     with c1:
-        fig1 = px.bar(df.groupby('Tipo')['Valor'].sum().abs().reset_index(), x='Tipo', y='Valor', color='Tipo', color_discrete_map={'CREDITO': '#C5A059', 'DEBITO': '#7A6337'}, template="plotly_dark")
-        fig1.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        st.write("#### 💰 Volume Financeiro Total")
+        df_vol_banco = df.groupby('Banco')['Valor'].apply(lambda x: x.abs().sum()).reset_index()
+        df_vol_banco = df_vol_banco.sort_values('Valor', ascending=False)
+        fig1 = px.bar(df_vol_banco, x='Banco', y='Valor', text='Valor', color='Banco', color_discrete_sequence=['#C5A059', '#E2BC7A', '#8E794E', '#5C4A26'], template="plotly_dark")
+        fig1.update_traces(texttemplate='R$ %{y:,.2f}', textposition='outside', cliponaxis=False)
+        fig1.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, yaxis_visible=False, xaxis_title=None, margin=dict(t=50, b=0, l=0, r=0))
         st.plotly_chart(fig1, use_container_width=True)
+
     with c2:
-        fig2 = px.pie(df['Banco'].value_counts().reset_index(), values='count', names='Banco', color_discrete_sequence=['#C5A059', '#E2BC7A'], template="plotly_dark")
-        fig2.update_traces(hole=.4)
-        fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)")
+        st.write("#### 📊 Frequência de Transações")
+        df_banco_count = df['Banco'].value_counts().reset_index()
+        fig2 = px.pie(df_banco_count, values='count', names='Banco', color_discrete_sequence=['#C5A059', '#E2BC7A', '#8E794E', '#5C4A26'], template="plotly_dark", hole=.6)
+        fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(t=50, b=0, l=0, r=0))
+        fig2.update_traces(textinfo='percent+label', pull=[0.05 if i == 0 else 0 for i in range(len(df_banco_count))])
         st.plotly_chart(fig2, use_container_width=True)
 
-    # --- FORMATAÇÃO BRASILEIRA PARA TELA E EXCEL ---
-    st.write("### 🔍 Prévia dos Dados")
-    
-    # 1. Criamos uma cópia apenas para a visualização na tela
-    df_tela = df.copy()
-    
-    # 2. Aplicamos a máscara brasileira (troca ponto por vírgula e vírgula por ponto)
-    # Exemplo: 1234.56 vira 1.234,56
-    df_tela['Valor'] = df_tela['Valor'].apply(lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    
-    # Mostra a tabela na interface
-    st.dataframe(df_tela, use_container_width=True)
+    st.write("---")
 
-    # 3. Conversão para download com o parâmetro mágico: decimal=','
-    # Isso garante que o Excel brasileiro entenda a coluna Valor como dinheiro/número nativo
-    csv = df.to_csv(index=False, sep=';', decimal=',', encoding='utf-8-sig').encode('utf-8-sig')
-    
-    st.download_button(
-        label="📥 Baixar Planilha Consolidada", 
-        data=csv, 
-        file_name="analisegroup_consolidado.csv", 
-        mime="text/csv"
-    )
+    # --- 5. AUDITORIA DE TRANSFERÊNCIAS (Interface) ---
+    if tem_transferencias:
+        st.write("### 🔄 Alerta de Transferências Internas")
+        st.markdown("<p style='color: #C5A059; font-size: 14px;'><i>Possíveis movimentações entre contas da mesma titularidade.</i></p>", unsafe_allow_html=True)
+        df_transferencias_tela = df_transferencias.copy()
+        df_transferencias_tela['Valor'] = df_transferencias_tela['Valor'].apply(lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        st.dataframe(df_transferencias_tela, use_container_width=True)
+        st.info("💡 Estas transações anulam umas às outras no Saldo Líquido.")
+        st.write("---")
+
+    # --- 6. PRÉVIA DOS DADOS ---
+    st.write("### 🔍 Prévia dos Dados Consolidados")
+    df_tela = df.copy()
+    df_tela['Valor'] = df_tela['Valor'].apply(lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    st.dataframe(df_tela, use_container_width=True)
