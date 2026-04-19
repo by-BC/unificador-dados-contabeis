@@ -87,22 +87,42 @@ with col_up2:
     st.markdown("<p style='color:#C5A059; font-weight:bold; margin-bottom:0;'>2. A Verdade da Empresa</p>", unsafe_allow_html=True)
     arquivo_erp = st.file_uploader("Controle Interno (CSV ou Excel)", type=["csv", "xlsx"])
     
-    valores_erp = [] # Lista que vai guardar os valores do cliente
+    valores_erp = [] 
     if arquivo_erp:
         try:
-            # Controle lógico para aceitar tanto CSV quanto Excel
             if arquivo_erp.name.endswith('.csv'):
                 df_erp = pd.read_csv(arquivo_erp, sep=';', decimal=',')
             else:
                 df_erp = pd.read_excel(arquivo_erp)
             
-            # Busca a coluna de Valor (independente se está maiúscula ou minúscula)
             coluna_valor = [col for col in df_erp.columns if 'VALOR' in str(col).upper()]
             
             if coluna_valor:
-                # Transforma todos os valores em absolutos para facilitar o match
-                valores_erp = df_erp[coluna_valor[0]].abs().tolist()
-                st.success(f"✅ ERP carregado! {len(valores_erp)} lançamentos prontos para auditoria.")
+                # --- O FAXINEIRO DE DADOS (NOVO) ---
+                def limpar_numero(x):
+                    try:
+                        # Se for vazio, ignora
+                        if pd.isna(x): return None
+                        # Se já for número nativo, mantém
+                        if isinstance(x, (int, float)): return float(x)
+                        
+                        # Converte para texto e limpa sujeiras comuns de sistemas financeiros
+                        x_str = str(x).upper().replace('R$', '').strip()
+                        
+                        # Se tiver vírgula, assume que é padrão BR (tira pontos de milhar e troca vírgula por ponto)
+                        if ',' in x_str:
+                            x_str = x_str.replace('.', '').replace(',', '.')
+                            
+                        return float(x_str)
+                    except:
+                        # Se for um texto irrecuperável (ex: "Saldo Anterior"), vira None e será apagado
+                        return None 
+                        
+                # Aplica o faxineiro, apaga os valores nulos e só então aplica o valor absoluto
+                valores_limpos = df_erp[coluna_valor[0]].apply(limpar_numero).dropna()
+                valores_erp = valores_limpos.abs().tolist()
+                
+                st.success(f"✅ ERP carregado! {len(valores_erp)} lançamentos válidos prontos para auditoria.")
             else:
                 st.error("A planilha precisa ter uma coluna chamada 'Valor'.")
         except Exception as e:
