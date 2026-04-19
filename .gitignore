@@ -145,7 +145,10 @@ env.bak/
 venv.bak/
 data/
 .venv/
-__pycache__/    
+__pycache__/ 
+secrets.toml
+
+    
 
 # Spyder project settings
 .spyderproject
