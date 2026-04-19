@@ -130,6 +130,15 @@ with col_up2:
 
 st.markdown("---")
 
+# --- ESCUDO DE PROTEÇÃO (Garante que o sistema não quebre por falta de arquivos) ---
+if not arquivos_ofx:
+    st.info("👆 Por favor, anexe os extratos OFX para iniciar a auditoria.")
+    st.stop() # Para a execução do aplicativo aqui até que o arquivo seja enviado
+
+if not valores_erp:
+    st.warning("⚠️ Operando apenas com a Verdade do Banco. Anexe o Controle Interno (ERP) para habilitar o Motor de Match.")
+    # Aqui NÃO usamos st.stop() porque o contador pode querer apenas o consolidador de OFX
+
 # --- MAPEAMENTO DE BANCOS (Atualizado) ---
 BANCOS_MAPEADOS = {
     '1': 'Banco do Brasil',
