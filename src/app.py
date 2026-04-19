@@ -84,39 +84,54 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- CABEÇALHO DA MARCA ---
-st.markdown(f"""
-    <div class="main-header">
-        <img src="https://raw.githubusercontent.com/bruno-candido/unificador-dados-contabeis/main/assets/logo.png" onerror="this.src='https://via.placeholder.com/220x80/000000/C5A059?text=ANALISEGROUP'">
-        <p style="color: #C5A059; letter-spacing: 5px; font-size: 12px; font-weight: 300; margin-top: -10px;">
-            BPO FINANCEIRO & AUDITORIA DIGITAL
-        </p>
-    </div>
-""", unsafe_allow_html=True)
 
 # --- SISTEMA DE SEGURANÇA (GOVERNANÇA DE TI) ---
 def check_password():
     if st.session_state.get("password_correct", False):
         return True
     
-    st.title("🔐 Acesso Restrito - Analisegroup")
+    # --- TELA DE LOGIN (Logo Grande e Centralizado) ---
+    st.write("") # Espaçamento superior
+    st.write("")
     
-    # Criar um formulário faz com que o "Enter" funcione como o botão de envio
+    col_espaco1, col_logo, col_espaco3 = st.columns([1, 1.5, 1])
+    with col_logo:
+        try:
+            # Lê o arquivo local de forma segura
+            st.image("assets/logo.png", use_container_width=True)
+        except Exception:
+            st.error("⚠️ Logo não encontrado na pasta assets/logo.png")
+            
+        st.markdown("<p style='text-align: center; color: #C5A059; letter-spacing: 4px; font-size: 11px; font-weight: 600; margin-top: -15px; margin-bottom: 30px;'>BPO FINANCEIRO & AUDITORIA DIGITAL</p>", unsafe_allow_html=True)
+
+    # Formulário de Senha
     with st.form("login_form", clear_on_submit=False):
-        password = st.text_input("Insira a senha de acesso", type="password")
-        submit_button = st.form_submit_button("Entrar", use_container_width=True)
+        password = st.text_input("Credencial de Acesso", type="password")
+        submit_button = st.form_submit_button("AUTENTICAR")
         
         if submit_button:
             if password == st.secrets["general"]["access_password"]:
                 st.session_state["password_correct"] = True
-                st.rerun() # Reinicia para liberar o app
+                st.rerun()
             else:
-                st.error("Senha incorreta. Tente novamente.")
+                st.error("Credencial incorreta. Tente novamente.")
                 
     return False
 
 if not check_password():
     st.stop()
+
+if not check_password():
+    st.stop()
+
+# --- CABEÇALHO MINIMALISTA PÓS-LOGIN ---
+st.markdown("""
+    <h4 style='color: #C5A059; letter-spacing: 2px; font-weight: 600; border-bottom: 1px solid rgba(197, 160, 89, 0.2); padding-bottom: 10px; margin-bottom: 30px; text-transform: uppercase;'>
+        Analisegroup <span style='color: #666; font-size: 14px; font-weight: 400;'>| Workspace de Conciliação</span>
+    </h4>
+""", unsafe_allow_html=True)
+
+# Daqui para baixo começam as suas áreas de upload (col_up1 e col_up2)...
 
 # --- LÓGICA DE NEGÓCIO ---
 def extrair_cnpj(memo):
