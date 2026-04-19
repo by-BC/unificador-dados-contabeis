@@ -4,6 +4,7 @@ import plotly.express as px
 from ofxparse import OfxParser
 import io
 import re
+import base64
 
 # --- CONFIGURAÇÃO DA PÁGINA (CLEAN & PREMIUM) ---
 st.set_page_config(
@@ -89,24 +90,33 @@ def check_password():
     if st.session_state.get("password_correct", False):
         return True
     
-    # Empurra o bloco um pouco mais para o meio da tela
+    # Empurra o bloco um pouco mais para o meio da tela verticalmente
+    st.write("")
     st.write("")
     st.write("")
     st.write("")
     
-    # As colunas laterais (1.5) espremem a coluna central (1), travando o tamanho
+    # Mantemos as colunas laterais largas para centralizar o conteúdo
+    # Mantemos as colunas laterais largas para empurrar o bloco para o centro da tela
     col_vazia1, col_login, col_vazia2 = st.columns([1.5, 1, 1.5])
     
     with col_login:
-        try:
-            # use_container_width agora está limitado ao tamanho pequeno da col_login
-            st.image("assets/logo.png", use_container_width=True)
-        except Exception:
-            st.error("⚠️ Logo não encontrado na pasta assets/logo.png")
-            
-        st.markdown("<p style='text-align: center; color: #C5A059; letter-spacing: 2px; font-size: 11px; font-weight: 600; margin-top: -15px; margin-bottom: 25px;'>BPO FINANCEIRO & AUDITORIA DIGITAL</p>", unsafe_allow_html=True)
+        
+        # --- TRUQUE DAS COLUNAS ANINHADAS (Para centralizar o logo) ---
+        # Criamos sub-colunas: as laterais (peso 1) espremem a do centro (peso 2)
+        col_img_esq, col_img_centro, col_img_dir = st.columns([1, 2, 1])
+        
+        with col_img_centro:
+            try:
+                # O use_container_width agora obedece apenas o tamanho da col_img_centro
+                st.image("assets/logo.png", use_container_width=True)
+            except Exception:
+                st.error("⚠️ Logo não encontrado na pasta assets/logo.png")
+        
+        # O texto continua aqui, centralizado via HTML porque é um st.markdown
+        st.markdown("<p style='text-align: center; color: #C5A059; letter-spacing: 2px; font-size: 10px; font-weight: 600; margin-top: 10px; margin-bottom: 25px;'>BPO FINANCEIRO & AUDITORIA DIGITAL</p>", unsafe_allow_html=True)
 
-        # O formulário agora fica restrito à mesma coluna estreita
+        # O formulário de senha... (continue com o resto do código do formulário a partir daqui)
         with st.form("login_form", clear_on_submit=False):
             password = st.text_input("Credencial de Acesso", type="password")
             submit_button = st.form_submit_button("AUTENTICAR")
@@ -117,9 +127,22 @@ def check_password():
                     st.rerun()
                 else:
                     st.error("Credencial incorreta. Tente novamente.")
+
+    # --- AUTO-FOCUS NO CAMPO DE SENHA (SCRIPT INVISÍVEL) ---
+    st.components.v1.html(
+        """
+        <script>
+        setTimeout(function() {
+            var input = window.parent.document.querySelector('input[type="password"]');
+            if (input) { input.focus(); }
+        }, 100);
+        </script>
+        """,
+        height=0,
+        width=0
+    )
                     
     return False
-    
     # Formulário de Senha
     with st.form("login_form", clear_on_submit=False):
         password = st.text_input("Credencial de Acesso", type="password")
@@ -137,12 +160,44 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- CABEÇALHO MINIMALISTA PÓS-LOGIN ---
-st.markdown("""
-    <h4 style='color: #C5A059; letter-spacing: 2px; font-weight: 600; border-bottom: 1px solid rgba(197, 160, 89, 0.2); padding-bottom: 10px; margin-bottom: 30px; text-transform: uppercase;'>
-        Analisegroup <span style='color: #666; font-size: 14px; font-weight: 400;'>| Workspace de Conciliação</span>
-    </h4>
-""", unsafe_allow_html=True)
+# --- CABEÇALHO UNIFICADO CLEAN COM MINI LOGO ---
+
+# 1. Função rápida para transformar a imagem em código blindado
+def get_image_base64(path):
+    try:
+        with open(path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except Exception:
+        return ""
+
+logo_base64 = get_image_base64("assets/logo.png")
+# Define o tamanho do logo (height: 28px) para ficar proporcional ao texto
+img_html = f'<img src="data:image/png;base64,{logo_base64}" style="height: 28px; margin-right: 12px;">' if logo_base64 else ""
+
+st.write("") 
+col_cabecalho, col_logout = st.columns([8, 1])
+
+with col_cabecalho:
+    # Usamos display: flex e align-items: center para o logo e texto ficarem milimetricamente alinhados
+    st.markdown(f"""
+        <div style="padding-top: 5px; display: flex; align-items: center;">
+            {img_html}
+            <span style='color: #C5A059; font-size: 20px; letter-spacing: 2px; font-weight: 700; text-transform: uppercase;'>
+                Analisegroup
+            </span>
+            <span style='color: #333; font-size: 20px; margin: 0 10px;'>|</span>
+            <span style='color: #F0F0F0; font-size: 18px; font-weight: 300; letter-spacing: 1px;'>
+                Conciliação BPO e Unificação OFX
+            </span>
+        </div>
+    """, unsafe_allow_html=True)
+    
+with col_logout:
+    if st.button("SAIR", key="btn_logout", use_container_width=True):
+        st.session_state["password_correct"] = False
+        st.rerun()
+
+st.markdown("<hr style='border: none; border-bottom: 1px solid rgba(197, 160, 89, 0.2); margin-top: 10px; margin-bottom: 30px;'>", unsafe_allow_html=True)
 
 # Daqui para baixo começam as suas áreas de upload (col_up1 e col_up2)...
 
@@ -156,16 +211,6 @@ def extrair_cnpj(memo):
             c = match.group(0)
             return f"{c[:2]}.{c[2:5]}.{c[5:8]}/{c[8:12]}-{c[12:]}"
     return ""
-
-# --- INTERFACE ---
-col_logo, col_text = st.columns([1, 4])
-with col_logo:
-    st.image("assets/logo.png", width=110)
-with col_text:
-    st.write("# Unificador de Extratos OFX")
-    st.write("*Uma Contabilidade de Excelência*")
-
-st.markdown("---")
 
 # --- ÁREAS DE UPLOAD (A DUPLA PONTA DA CONCILIAÇÃO) ---
 st.markdown("### 📥 Entrada de Dados (Preparação para o Match)")
